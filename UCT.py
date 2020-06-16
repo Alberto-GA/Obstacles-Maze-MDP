@@ -20,19 +20,26 @@ def Rollout(s):
     nRollout = 0    # initialise the rollout counter
     payoff = 0      # initialise the cummulative cost/reward
     while nRollout < depth:
+        
+        # Stop the rollout if a dead-end is reached.
+        # NOTE: "the first state will never be a dead-end so payoff>0"
+        if s.obstacle : return payoff
+        
         # The rollouts progress with random actions -> sample an action
         a = s.SampleAction()
-        print(a)
+
         # Sample a state according to P(s'|s,a)
         successor = s.sampleNewState(a)
-        print(successor)
+        
         # Compute the inmediate cost/reward and update the payoff
         payoff += s.transitions[a][successor][1]
-        print(payoff)
+       
         # update the current state with the sampled successor
         s = successor
+        
         # increase the rollout counter
         nRollout += 1
+        
     return payoff
 
 #----------------------------------------------------------------------------#    
@@ -75,20 +82,21 @@ def UCT_Trial(s):
         
     # 2) CHECK IF THE STATE IS ALREADY IN THE GRAPH---------------------------
     if s not in G:
-        
+        #print("New state detected")
+        #print("Initialisation")
         # create a new node in the graph if this is a new state
         G[s] = {}             # intialise node's dictionary
-        G[s]["N"] = 1         # Count the first visit to the node                            ESTO NO ESTA EN EL CODIGO
+        G[s]["N"] = 5         # Count the first visit to the node as five times (all the actions will be explored)
         
         # initialise the Q-values based on rollouts
         # note that all the possible actions are tested
         # note that the childs are not created in the graph
         aux = []              # empty list to ease the maximization
         for a in s.transitions.keys():
-            
+            #print("Init: " + a)
             # Sample a successor according to the generative model
             successor = s.sampleNewState(a)
-            print("successor pre rollout",successor)
+            #print("successor pre rollout",successor)
             
             # the Qvalue is the inmediate cost/reward plus the long term
             # cost/reward that is estimated through a rollout
@@ -108,32 +116,63 @@ def UCT_Trial(s):
         # strategy that is based on the UCB formula    
     a_UCB = ActionSelection(s,G)
     
-    # 4) SAMPLE A CHILD FOLLOWING PLAYING THIS ACTION ------------------------
+    # 4) SAMPLE A CHILD  PLAYING THIS ACTION ---------------------------------
     successor = s.sampleNewState(a_UCB)
     
     # 6) UPDATE THE COUNTERS -------------------------------------------------
+        # The order between this step and the next one has been reversed. This
+        # is so because the target problem allows to play actions that lead
+        # the agent to the same state. Taking into account the recursivity of
+        # the following step, it could generate an infinte loop of 
+        # actionSelection-childSampling if G is not modified so that the UCB
+        # formula is affected. 
+        # The objective of this strategy is not to remove the loops but to 
+        # make the loops finite. To do it, the "lazy" action mustn't be the
+        # result of the action selection (UCB) forever. Updating the counters
+        # in combination with a high enough exploration coefficient seems to 
+        # be a promising strategy...     
     G[s]["N"] += 1
-    G[s][a_UCB]["Na"] += 1   # I've reversed the order to solve cycles.....let's see
+    G[s][a_UCB]["Na"] += 1 
     
-    # 5) WHAT IS THIS? -------------------------------------------------------
-    QvaluePrime =  s.transitions[a_UCB][successor][1] + UCT_Trial(successor)  
-    """
-    Problems here! If UCT_Trial(s*) tells me that a_UCB is "stay" the successor
-    will be s* (not only the problem of "stay" imagine playing "north" in 
-    the border...). This means that I will call again UCT_Trial(s*) that will
-    give me the same a_UCB and consequently, I will enter an infinite loop.
+    # 5) COMPUTE AN ESTIMATE OF Q(s,a_UCB)------------------------------------
+        # The importance of this first estimate is twofold. First it will be 
+        # used to Compute the final estimate of the Q-value. Second, its
+        # recursive architecture allows to expand the state including the 
+        # child in the graph, and it also performs a subsequent backup in 
+        # reverse order so the trial finishes when the backup is done in the 
+        # root node.
     
-    how to solve? if the successor is the same then change the action? do I 
-    have to cvhange ActionSelection method or solve it at this level....
-    
-    """      
-    
-
-    
+    if successor == s :
+        
+        # Kill possible loop with greedy Qvalue estimate
+        aux = []              
+        for a in s.transitions.keys():
+            
+            aux.append(G[s][a_UCB]["Q-value"])
+        
+        QvaluePrime = s.transitions[a_UCB][s][1] + max(aux)
+        aux = []
+        
+    else :
+            
+        QvaluePrime =  s.transitions[a_UCB][successor][1] + UCT_Trial(successor)  
+        
+        
     # 7) UPDATE THE Q-VALUE OF THE PAIR (s,a_UCB)-----------------------------
+    
     G[s][a_UCB]["Q-value"] += (QvaluePrime + G[s][a_UCB]["Q-value"]) / G[s][a_UCB]["Na"]
     
-    return QvaluePrime       
+    """
+    if successor.goal or successor.obstacle :  
+        
+        G[s][a_UCB]["Q-value"] = QvaluePrime
+        
+    else :
+        
+        G[s][a_UCB]["Q-value"] = ( s.transitions[a_UCB][successor][1] + (G[successor]["N"]/ G[s][a_UCB]["Na"]) * QvaluePrime )
+    """
+    
+    return QvaluePrime 
     
 #----------------------------------------------------------------------------#    
 """
@@ -157,7 +196,8 @@ def UCT_like(s0, maxTrials):
     G = {}                             # initialize a graph
     while nTrial < maxTrials :         # perform trials while possible
         
-        UCT_Trial(s0)
         nTrial += 1
+        UCT_Trial(s0)
+        
         
     return G     
