@@ -41,7 +41,7 @@ def checkSolved(s, gamma, epsilon):
         
         last = len(openStack) -1   # take and remove the last element of the stack
         s = openStack[last]
-        openStack.pop(last)                                                                         #OJO QUE HAGO EL POP EL ULTIMO HACIA ARRIBA
+        openStack.pop(last)                                                                         
         
         closedStack.append(s)      # append that state to the already checked list
         
@@ -73,7 +73,8 @@ def checkSolved(s, gamma, epsilon):
         # update states with residuals and ancestors
         while not closedStack ==  []:
             
-            last = len(closedStack) -1   # take and remove the last element of the stack       #OJO QUE HAGO EL POP EL ULTIMO HACIA ARRIBA
+            # take and remove the last element of the stack
+            last = len(closedStack) -1   
             s = closedStack[last]
             closedStack.pop(last)
             
@@ -93,17 +94,21 @@ def TRIAL_LRTDP(s, gamma, epsilon):
     while not s.solved :
         
         # Append the current state to the visited list
-        visited.append(s)                                                      #OJO CON LOS CICLOS
+        # Be careful with cyclic transitions models -> try to append states
+        # only once
+        if s not in visited :
+            visited.append(s)     
         
-        # termination at goal and dead-ends.
-        # in RTDP this was in the while condition because there wasn't any
+        # termination at goal and dead-ends. Equivalent to define these states
+        # as solved.
+        # In RTDP this was in the while condition because there wasn't any
         # other stopping criteria
         if  s.goal or s.obstacle :
             
             break
         
         # Now follow the same procedure as in RTDP 
-        # pick the best action and update the hash
+        # pick the best action and update the hash table
         a = s.greedyAction(gamma)
         s.update(gamma)
         
@@ -121,7 +126,7 @@ def TRIAL_LRTDP(s, gamma, epsilon):
         if not checkSolved(s, gamma, epsilon) :
             
             break # As soon as I find an unconverged state stop checking 
-                  # because its predecessors won't have been converged neither
+                  # because its ancestors won't have converged neither
             
     
     return
@@ -129,13 +134,14 @@ def TRIAL_LRTDP(s, gamma, epsilon):
 
 def LRTDP(s0, gamma, epsilon):
     
-    
+    n = 0                                 # Count iters for performances
     s = s0
-    while not s.solved :                  # launch trials until the intial the
+    while not s.solved :                  # launch trials until the
                                           # intial state is solved.
         
         TRIAL_LRTDP(s, gamma, epsilon)
-    
+        
+        n += 1                            # Increase counter
     print("MDP LRTDP: trials stopped, epsilon-optimal policy found")
-    return
+    return n
         
