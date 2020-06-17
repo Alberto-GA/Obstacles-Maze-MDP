@@ -58,11 +58,47 @@ def ActionSelection(s,G):
     c = 10           # Exploration coefficient 
     UCB = {}         # Dictionary to save the result of UCB for each action
     
-    for a in  G[s].keys():          # UCB formula
-        if not a=="N":              # a key of this dictionary is not an action
-            UCB[a] = G[s][a]["Q-value"] + c * math.sqrt(math.log(G[s]["N"])/G[s][a]["Na"])
+    for a in s.transitions.keys():          # UCB formula
+        UCB[a] = G[s][a]["Q-value"] + c * math.sqrt(math.log(G[s]["N"])/G[s][a]["Na"])
 
     # choose the action that maximize the UCB formula    
+    a_UCB = max(UCB.items(), key=operator.itemgetter(1))[0]
+    return a_UCB
+
+"""
+There is a problem with the action selection when "lazy" actions are chosen 
+from the UCB formula because the successor is the same state and this issue 
+comes into conflict with the recursivity. For this reason I've suggested to 
+take into account only relevant actions using the function below. 
+
+WARNING: This choice doesn't seem to be a great idea because the nodes are 
+completely initialised. This means that all the actions are tried and they
+are provided with a first stimate of the Q-value(s,a) thanks to a rollout.
+And where is the problem? Well, this values are initialised but the actions 
+are no longer taken into account through action selection (UCB) resulting in
+a biased situation between relevant and lazy actions.
+
+CONCLUSION: if you want to remove the "lazy" actions to kill loops of type 
+s'=s, only relevant actions must be initialised!!! -> LOOK STEP 2
+
+"""
+def RelevantActionSelection(s,G):
+    c = 10           # Exploration coefficient 
+    UCB = {}         # Dictionary to save the result of UCB for each action
+    
+    for a in s.transitions.keys():
+        # CONSIDER ONLY RELEVANT ACTIONS -> avoid infinite loops between 
+        # action Selection and child sampling in the recursive call. However, 
+        # this doesn't prevent from loops in the tree: e.g s0-s1-s5-s4-s0...
+        if a=="Stay":                    continue               
+        elif s.top    and a=="North":    continue    
+        elif s.right  and a=="East":     continue    
+        elif s.left   and a=="West":     continue     
+        elif s.bottom and a=="South":    continue
+        else :                                        # UCB formula     
+            UCB[a] = G[s][a]["Q-value"] + c * math.sqrt(math.log(G[s]["N"])/G[s][a]["Na"])
+
+    # choose the relevant action that maximize the UCB formula    
     a_UCB = max(UCB.items(), key=operator.itemgetter(1))[0]
     return a_UCB
     
@@ -82,39 +118,62 @@ def UCT_Trial(s):
         
     # 2) CHECK IF THE STATE IS ALREADY IN THE GRAPH---------------------------
     if s not in G:
-        #print("New state detected")
-        #print("Initialisation")
-        # create a new node in the graph if this is a new state
-        G[s] = {}             # intialise node's dictionary
-        G[s]["N"] = 5         # Count the first visit to the node as five times (all the actions will be explored)
+        #print("New state detected -> Initialisation")
+        # Create a new node in the graph if this is a new state
+        G[s] = {}        # intialise node's dictionary
+        G[s]["N"] = 0    # Count the first visit to the node (as the number of initialised actions) 
+        G[s]["V"] = 0    # Initialise the Value function of the decission Node
         
-        # initialise the Q-values based on rollouts
-        # note that all the possible actions are tested
-        # note that the childs are not created in the graph
-        aux = []              # empty list to ease the maximization
+        # Initialise the Q-values based on rollouts
+        # NOTE that (all the possible/only relevant) actions are tested.
+        # NOTE that the childs are not created in the graph.
+        aux = []          # empty list to ease the maximization
         for a in s.transitions.keys():
-            #print("Init: " + a)
-            # Sample a successor according to the generative model
-            successor = s.sampleNewState(a)
-            #print("successor pre rollout",successor)
-            
-            # the Qvalue is the inmediate cost/reward plus the long term
-            # cost/reward that is estimated through a rollout
-            G[s][a]={}
-            G[s][a]["Q-value"] = s.transitions[a][successor][1] + Rollout(successor)
-            aux.append(G[s][a]["Q-value"])  
-            
-            # Register the visit for this pair s-a
-            G[s][a]["Na"]= 1
+             if a=="Stay":                    continue    #Remove lazy actions           
+             elif s.top    and a=="North":    continue    #if you want to con-
+             elif s.right  and a=="East":     continue    #sider only relevant
+             elif s.left   and a=="West":     continue    #actions. Remove if-else
+             elif s.bottom and a=="South":    continue    #to consider all actions
+             else :
+                 
+                # Count the initialisation of this action as a visit to Node s
+                G[s]["N"]+=1 
+                
+                # Sample a successor according to the generative model
+                successor = s.sampleNewState(a)
+                
+                # the Qvalue is the inmediate cost/reward plus the long term
+                # cost/reward that is estimated through a rollout
+                G[s][a]={}
+                G[s][a]["Q-value"] = s.transitions[a][successor][1] + Rollout(successor)
+                aux.append(G[s][a]["Q-value"])  
+                
+                # Register the visit for this pair s-a
+                G[s][a]["Na"]= 1
+                
+        # Compute the Qvalue of the decision node (V(s)).Two approaches are valid.
+        # OPTION1: Averaging the Qvalues ofits successor chance nodes.
+        #          V(s) <- SUM[Na(s,a) . Q(s,a)]/N(s)
+        """
+        for a in  s.transitions.keys():
+            G[s]["V"]+= G[s][a]["Na"] * G[s][a]["Q-value"]/G[s]["N"]
+        """    
+        # OPTION2: Taking into account only the optimal Q(s,a)
+        #          V(s) <- max(Q(s,a)) | a in A
+        G[s]["V"] = max(aux)  
         
+        #Return and finish the trial.
         rv = max(aux)        # the return value is the max Q(s,a)
         aux = []             # clear the auxiliary list
         return rv
     
     # 3) EXPAND THE NODE IF IT'S ALREADY IN THE GRAPH ------------------------
         # To expand a node, UCT applies the action selection  
-        # strategy that is based on the UCB formula    
-    a_UCB = ActionSelection(s,G)
+        # strategy that is based on the UCB formula, this code provide two
+        # different functions to return the 'best' action:
+        #    -Actionselection(s,G)-> all actions, including "lazy" actions, are considered.
+        #    -RelevantActionSelection(s,G)-> only relevant actions are considered.
+    a_UCB = RelevantActionSelection(s,G)
     
     # 4) SAMPLE A CHILD  PLAYING THIS ACTION ---------------------------------
     successor = s.sampleNewState(a_UCB)
@@ -132,7 +191,7 @@ def UCT_Trial(s):
         # in combination with a high enough exploration coefficient seems to 
         # be a promising strategy...     
     G[s]["N"] += 1
-    G[s][a_UCB]["Na"] += 1 
+    G[s][a_UCB]["Na"] += 1   
     
     # 5) COMPUTE AN ESTIMATE OF Q(s,a_UCB)------------------------------------
         # The importance of this first estimate is twofold. First it will be 
@@ -144,33 +203,33 @@ def UCT_Trial(s):
     
     if successor == s :
         
-        # Kill possible loop with greedy Qvalue estimate
-        aux = []              
-        for a in s.transitions.keys():
-            
-            aux.append(G[s][a_UCB]["Q-value"])
-        
-        QvaluePrime = s.transitions[a_UCB][s][1] + max(aux)
-        aux = []
+        # Kill possible loop (s'=s) with current Qvalue estimate
+        # This condition never applies if only relevant actions are considered        
+        QvaluePrime = s.transitions[a_UCB][s][1] + G[s]["V"]
         
     else :
             
         QvaluePrime =  s.transitions[a_UCB][successor][1] + UCT_Trial(successor)  
-        
-        
+    
+  
     # 7) UPDATE THE Q-VALUE OF THE PAIR (s,a_UCB)-----------------------------
+    G[s][a_UCB]["Q-value"] += (QvaluePrime - G[s][a_UCB]["Q-value"]) / G[s][a_UCB]["Na"]
     
-    G[s][a_UCB]["Q-value"] += (QvaluePrime + G[s][a_UCB]["Q-value"]) / G[s][a_UCB]["Na"]
+    
+    # 8) UPDATE THE VALUE FUNCTION OF THE DECISSION NODE
+    """
+    # OPTION 1: V(s) <- SUM[Na(s,a) . Q(s,a)]/N(s)
+    G[s]["V"] = 0
+    for a in  s.transitions.keys():
+        G[s]["V"] += G[s][a]["Na"]*G[s][a]["Q-value"]/G[s]["N"]
     
     """
-    if successor.goal or successor.obstacle :  
-        
-        G[s][a_UCB]["Q-value"] = QvaluePrime
-        
-    else :
-        
-        G[s][a_UCB]["Q-value"] = ( s.transitions[a_UCB][successor][1] + (G[successor]["N"]/ G[s][a_UCB]["Na"]) * QvaluePrime )
-    """
+    # OPTION 2: V(s) <- max Q(s,a) | a in A
+    aux = []              
+    for a in s.transitions.keys(): aux.append(G[s][a_UCB]["Q-value"])
+    G[s]["V"] = max(aux)
+    aux = []
+             
     
     return QvaluePrime 
     
@@ -183,7 +242,10 @@ the current partial tree. The desired architecture for this variable is:
     G = { s1: {a1 : {"Q-value" : current estimation for Q(s1,a1)
                         "Na"   : number of times we have played a1 in s1}
                a2 : {...}
-               N  : Number of times this State has been visited} 
+               N  : Number of times this State has been visited
+               V  : Value function in the decission Node s. This computation 
+                    is not essential but could be useful if "lazy" actions are playing
+               } 
          
          s2:{...}
          }
