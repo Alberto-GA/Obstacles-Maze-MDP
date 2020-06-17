@@ -129,13 +129,14 @@ def UCT_Trial(s):
         # NOTE that the childs are not created in the graph.
         aux = []          # empty list to ease the maximization
         for a in s.transitions.keys():
-             if a=="Stay":                    continue    #Remove lazy actions           
-             elif s.top    and a=="North":    continue    #if you want to con-
-             elif s.right  and a=="East":     continue    #sider only relevant
-             elif s.left   and a=="West":     continue    #actions. Remove if-else
-             elif s.bottom and a=="South":    continue    #to consider all actions
-             else :
-                 
+            
+            if a=="Stay":                    continue    #Remove lazy actions           
+            elif s.top    and a=="North":    continue    #if you want to con-
+            elif s.right  and a=="East":     continue    #sider only relevant
+            elif s.left   and a=="West":     continue    #actions. Remove if-else
+            elif s.bottom and a=="South":    continue    #to consider all actions
+            else :
+              
                 # Count the initialisation of this action as a visit to Node s
                 G[s]["N"]+=1 
                 
@@ -217,8 +218,9 @@ def UCT_Trial(s):
     
     
     # 8) UPDATE THE VALUE FUNCTION OF THE DECISSION NODE
-    """
+    
     # OPTION 1: V(s) <- SUM[Na(s,a) . Q(s,a)]/N(s)
+    """
     G[s]["V"] = 0
     for a in  s.transitions.keys():
         G[s]["V"] += G[s][a]["Na"]*G[s][a]["Q-value"]/G[s]["N"]
@@ -226,7 +228,9 @@ def UCT_Trial(s):
     """
     # OPTION 2: V(s) <- max Q(s,a) | a in A
     aux = []              
-    for a in s.transitions.keys(): aux.append(G[s][a_UCB]["Q-value"])
+    for a in G[s].keys(): 
+        if a=="N" or a=="V": continue
+        else : aux.append(G[s][a]["Q-value"])
     G[s]["V"] = max(aux)
     aux = []
              
