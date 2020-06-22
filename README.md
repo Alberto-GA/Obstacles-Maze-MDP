@@ -1,5 +1,5 @@
 # Obstacles-Maze-MDP
-This repository contains a repertoire of python files which provides a generative model as well as some solver algorithms for my Obstacles-Maze problem.
+This repository contains a repertoire of python files which provides a declarative model as well as some solver algorithms for my Obstacles-Maze problem.
 
 In this problem the autonomous agent must travel through a grid map from a initial state (that can be known or not) to the goal.
 Nonetheless, the agent must be careful because it is quite likely that it will find some obstacles in the journey. These obstacles 
